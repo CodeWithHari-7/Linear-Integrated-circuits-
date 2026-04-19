@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BodeLab — Filter Analyzer</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root {
+    --bg: #080c10;
+    --surface: #0d1117;
+    --surface2: #131920;
+    --surface3: #1a2230;
+    --border: rgba(255,255,255,0.06);
+    --border2: rgba(255,255,255,0.12);
+    --accent: #00d4ff;
+    --accent2: #0099cc;
+    --accent-dim: rgba(0,212,255,0.12);
+    --accent-glow: rgba(0,212,255,0.25);
+    --green: #00e5a0;
+    --green-dim: rgba(0,229,160,0.12);
+    --amber: #ffb347;
+    --amber-dim: rgba(255,179,71,0.12);
+    --red: #ff5f6d;
+    --red-dim: rgba(255,95,109,0.12);
+    --text: #e8f0f8;
+    --text2: #7a8fa6;
+    --text3: #4a5d70;
+    --radius: 8px;
+    --radius2: 12px;
+    --radius3: 16px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Background grid */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,212,255,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.025) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    top: -200px; left: -200px;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(0,212,255,0.04) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .page { position: relative; z-index: 1; max-width: 1140px; margin: 0 auto; padding: 0 24px 80px; }
+
+  /* Header */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 28px 0 40px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 40px;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo-icon {
+    width: 38px; height: 38px;
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .logo-icon::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--accent-dim);
+  }
+
+  .logo-icon svg { position: relative; z-index: 1; }
+
+  .logo-text {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 22px;
+    letter-spacing: -0.5px;
+    color: var(--text);
+  }
+
+  .logo-text span { color: var(--accent); }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .filter-badge {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid;
+    cursor: pointer;
+    transition: all 0.2s;
+    opacity: 0.5;
+  }
+
+  .filter-badge:hover { opacity: 0.8; }
+  .filter-badge.active { opacity: 1; }
+
+  .fb-lp { color: var(--accent); border-color: var(--accent); }
+  .fb-lp.active { background: var(--accent-dim); }
+  .fb-hp { color: var(--green); border-color: var(--green); }
+  .fb-hp.active { background: var(--green-dim); }
+  .fb-bp { color: var(--amber); border-color: var(--amber); }
+  .fb-bp.active { background: var(--amber-dim); }
+  .fb-br { color: var(--red); border-color: var(--red); }
+  .fb-br.active { background: var(--red-dim); }
+
+  /* Main layout */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    gap: 24px;
+    align-items: start;
+  }
+
+  /* Panel */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius3);
+    overflow: hidden;
+  }
+
+  .panel-header {
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .panel-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text2);
+  }
+
+  .panel-body { padding: 20px 22px; }
+
+  /* Column headers */
+  .col-headers {
+    display: grid;
+    grid-template-columns: 42px 1fr 1fr 1fr 28px;
+    gap: 8px;
+    padding: 0 0 10px;
+    align-items: center;
+  }
+
+  .col-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  .col-label:first-child { text-align: center; }
+
+  /* Data rows */
+  .rows-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; max-height: 420px; overflow-y: auto; padding-right: 2px; }
+
+  .rows-list::-webkit-scrollbar { width: 4px; }
+  .rows-list::-webkit-scrollbar-track { background: transparent; }
+  .rows-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+  .data-row {
+    display: grid;
+    grid-template-columns: 42px 1fr 1fr 1fr 28px;
+    gap: 8px;
+    align-items: center;
+    animation: rowIn 0.2s ease;
+  }
+
+  @keyframes rowIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .row-num {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--text3);
+    text-align: center;
+    user-select: none;
+  }
+
+  .data-input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 10px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s, background 0.15s;
+    -moz-appearance: textfield;
+  }
+
+  .data-input::-webkit-outer-spin-button,
+  .data-input::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+  .data-input:focus {
+    border-color: var(--accent);
+    background: var(--surface3);
+    box-shadow: 0 0 0 3px var(--accent-dim);
+  }
+
+  .data-input::placeholder { color: var(--text3); }
+
+  .data-input.has-val { border-color: rgba(0,212,255,0.2); }
+
+  .btn-del {
+    width: 28px; height: 28px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text3);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+    font-size: 14px;
+    line-height: 1;
+  }
+
+  .btn-del:hover { border-color: var(--red); color: var(--red); background: var(--red-dim); }
+
+  /* Actions */
+  .row-actions {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+
+  .btn {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 9px 16px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s;
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  .btn-ghost {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text2);
+  }
+
+  .btn-ghost:hover { border-color: var(--border2); color: var(--text); background: var(--surface3); }
+
+  .btn-accent {
+    background: var(--accent);
+    color: #000;
+    font-weight: 600;
+    flex: 1;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-accent::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.15) 0%, transparent 50%);
+    pointer-events: none;
+  }
+
+  .btn-accent:hover { background: #00eeff; transform: translateY(-1px); box-shadow: 0 4px 20px var(--accent-glow); }
+  .btn-accent:active { transform: translateY(0); }
+
+  .btn-danger {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text3);
+  }
+
+  .btn-danger:hover { border-color: var(--red); color: var(--red); background: var(--red-dim); }
+
+  /* Error */
+  .error-line {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--red);
+    min-height: 18px;
+    padding: 0 2px 12px;
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  /* Stats */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius2);
+    padding: 14px 16px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+
+  .stat-card.sc-blue::before { background: var(--accent); }
+  .stat-card.sc-green::before { background: var(--green); }
+  .stat-card.sc-amber::before { background: var(--amber); }
+  .stat-card.sc-red::before { background: var(--red); }
+
+  .stat-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 6px;
+  }
+
+  .stat-value {
+    font-family: 'Syne', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1;
+  }
+
+  .stat-unit {
+    font-size: 12px;
+    color: var(--text2);
+    font-family: 'DM Mono', monospace;
+    font-weight: 400;
+  }
+
+  /* Chart panel */
+  .chart-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius3);
+    overflow: hidden;
+  }
+
+  .chart-header {
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+
+  .chart-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 16px;
+    color: var(--text);
+  }
+
+  .chart-meta {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--text3);
+  }
+
+  .chart-body { padding: 24px; }
+
+  .chart-canvas-wrap {
+    position: relative;
+    width: 100%;
+    height: 340px;
+  }
+
+  .chart-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 340px;
+    gap: 16px;
+    color: var(--text3);
+  }
+
+  .chart-placeholder-icon {
+    width: 64px; height: 64px;
+    border: 1px dashed var(--border2);
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0.5;
+  }
+
+  .chart-placeholder p { font-size: 13px; }
+
+  /* Table */
+  .table-section { margin-top: 24px; }
+
+  .table-wrap { overflow-x: auto; border-radius: var(--radius2); border: 1px solid var(--border); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+
+  thead tr { background: var(--surface2); }
+
+  th {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text3);
+    padding: 11px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  td {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--text2);
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: var(--surface2); }
+
+  .td-db {
+    font-weight: 500;
+    color: var(--accent) !important;
+  }
+
+  .td-db.neg { color: var(--red) !important; }
+
+  .td-num { color: var(--text3) !important; }
+
+  /* Divider */
+  .divider { height: 1px; background: var(--border); margin: 24px 0; }
+
+  /* Footer */
+  .footer-info {
+    display: flex;
+    gap: 24px;
+    padding-top: 8px;
+  }
+
+  .info-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text3);
+  }
+
+  .info-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+  }
+
+  /* Tooltip custom */
+  .tooltip-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid;
+  }
+
+  /* Animations */
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .fade-in { animation: fadeIn 0.3s ease forwards; }
+
+  /* Scrollbar global */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+  @media (max-width: 860px) {
+    .main-grid { grid-template-columns: 1fr; }
+    .header-right { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <path d="M2 14 L5 10 L8 12 L11 6 L14 9 L18 4" stroke="#00d4ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="logo-text">Bode<span>Lab</span></div>
+    </div>
+    <div class="header-right">
+      <span class="filter-badge fb-lp">Low Pass</span>
+      <span class="filter-badge fb-hp">High Pass</span>
+      <span class="filter-badge fb-bp">Band Pass</span>
+      <span class="filter-badge fb-br">Band Reject</span>
+    </div>
+  </header>
+
+  <!-- Stats row -->
+  <div class="stats-grid" id="statsGrid">
+    <div class="stat-card sc-blue">
+      <div class="stat-label">Max Gain</div>
+      <div class="stat-value" id="statMax">—<span class="stat-unit"> dB</span></div>
+    </div>
+    <div class="stat-card sc-red">
+      <div class="stat-label">Min Gain</div>
+      <div class="stat-value" id="statMin">—<span class="stat-unit"> dB</span></div>
+    </div>
+    <div class="stat-card sc-green">
+      <div class="stat-label">−3dB Frequency</div>
+      <div class="stat-value" id="statCutoff">—<span class="stat-unit"> Hz</span></div>
+    </div>
+    <div class="stat-card sc-blue">
+      <div class="stat-label">Bandwidth</div>
+      <div class="stat-value" id="statBW">—<span class="stat-unit"> Hz</span></div>
+    </div>
+    <div class="stat-card sc-amber">
+      <div class="stat-label">Freq Range</div>
+      <div class="stat-value" id="statRange">—</div>
+    </div>
+    <div class="stat-card sc-green">
+      <div class="stat-label">Data Points</div>
+      <div class="stat-value" id="statPoints">0</div>
+    </div>
+  </div>
+
+  <!-- Main grid -->
+  <div class="main-grid">
+
+    <!-- Left panel: Input -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">Measurement Data</span>
+        <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text3);">Gain = Vout / Vin</span>
+      </div>
+      <div class="panel-body">
+
+        <div class="col-headers">
+          <div class="col-label">#</div>
+          <div class="col-label">Freq (Hz)</div>
+          <div class="col-label">Vin (V)</div>
+          <div class="col-label">Vout (V)</div>
+          <div></div>
+        </div>
+
+        <div class="rows-list" id="rowsList"></div>
+
+        <div class="error-line" id="errorLine"></div>
+
+        <div class="row-actions">
+          <button class="btn btn-ghost" onclick="addRow()">
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 2v9M2 6.5h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            Add Row
+          </button>
+          <button class="btn btn-accent" onclick="plotBode()">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 10l3-4 3 2 3-5 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Plot Bode
+          </button>
+          <button class="btn btn-danger" onclick="clearAll()" title="Clear all">
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 2l9 9M11 2l-9 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="footer-info">
+          <div class="info-item">
+            <div class="info-dot" style="background:var(--accent)"></div>
+            <span>dB = 20·log₁₀(|Vout/Vin|)</span>
+          </div>
+          <div class="info-item">
+            <div class="info-dot" style="background:var(--amber)"></div>
+            <span>−3dB = cutoff point</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Right: Chart + Table -->
+    <div>
+      <div class="chart-panel">
+        <div class="chart-header">
+          <div class="chart-title">Bode Plot — Magnitude Response</div>
+          <div class="chart-meta" id="chartMeta">Awaiting data...</div>
+        </div>
+        <div class="chart-body">
+          <div id="chartWrap">
+            <div class="chart-placeholder" id="chartPlaceholder">
+              <div class="chart-placeholder-icon">
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                  <path d="M3 20l5-7 5 4 5-9 5 5" stroke="rgba(255,255,255,0.2)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <p>Enter data and click <strong style="color:var(--accent)">Plot Bode</strong> to render</p>
+            </div>
+            <div class="chart-canvas-wrap" id="canvasWrap" style="display:none">
+              <canvas id="bodeChart" role="img" aria-label="Bode plot magnitude response — gain in dB vs frequency"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Table -->
+      <div class="table-section" id="tableSection" style="display:none">
+        <div class="table-wrap">
+          <table id="resultsTable">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Frequency</th>
+                <th>Vin</th>
+                <th>Vout</th>
+                <th>Gain (linear)</th>
+                <th>Gain (dB)</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  let rowCount = 0;
+  let chartInst = null;
+
+  function fmtFreq(f) {
+    if (f >= 1e6) return (f/1e6).toFixed(f%1e6===0?0:2)+' MHz';
+    if (f >= 1e3) return (f/1e3).toFixed(f%1e3===0?0:2)+' kHz';
+    return f.toFixed(f < 1 ? 3 : f < 10 ? 2 : f < 100 ? 1 : 0)+' Hz';
+  }
+
+  function fmtDB(v) { return v.toFixed(3)+' dB'; }
+
+  function addRow(fVal, vinVal, voutVal) {
+    rowCount++;
+    const list = document.getElementById('rowsList');
+    const d = document.createElement('div');
+    d.className = 'data-row';
+    d.id = 'row-'+rowCount;
+    const id = rowCount;
+    d.innerHTML = `
+      <div class="row-num">${rowCount.toString().padStart(2,'0')}</div>
+      <input class="data-input" type="number" id="f${id}" placeholder="1000" step="any" min="0.001" value="${fVal||''}" oninput="markFilled(this)" onfocus="clearErr()">
+      <input class="data-input" type="number" id="vi${id}" placeholder="1.000" step="any" value="${vinVal||''}" oninput="markFilled(this)" onfocus="clearErr()">
+      <input class="data-input" type="number" id="vo${id}" placeholder="0.707" step="any" value="${voutVal||''}" oninput="markFilled(this)" onfocus="clearErr()">
+      <button class="btn-del" onclick="removeRow(${id})" title="Delete row">×</button>
+    `;
+    list.appendChild(d);
+    if (fVal) { ['f','vi','vo'].forEach(p=>{ const el=document.getElementById(p+id); if(el&&el.value) el.classList.add('has-val'); }); }
+    // scroll to bottom
+    list.scrollTop = list.scrollHeight;
+  }
+
+  function markFilled(el) {
+    el.value.trim() ? el.classList.add('has-val') : el.classList.remove('has-val');
+  }
+
+  function removeRow(id) {
+    const el = document.getElementById('row-'+id);
+    if (el) { el.style.opacity='0'; el.style.transform='translateX(-8px)'; el.style.transition='all 0.15s'; setTimeout(()=>el.remove(),150); }
+  }
+
+  function clearErr() { document.getElementById('errorLine').textContent=''; }
+
+  function clearAll() {
+    document.getElementById('rowsList').innerHTML='';
+    rowCount=0;
+    if(chartInst){chartInst.destroy();chartInst=null;}
+    document.getElementById('canvasWrap').style.display='none';
+    document.getElementById('chartPlaceholder').style.display='flex';
+    document.getElementById('tableSection').style.display='none';
+    document.getElementById('chartMeta').textContent='Awaiting data...';
+    ['statMax','statMin','statCutoff','statBW','statRange'].forEach(id=>{ document.getElementById(id).innerHTML='—<span class="stat-unit"> dB</span>'; });
+    document.getElementById('statPoints').innerHTML='0';
+    clearErr();
+    addRow(); addRow(); addRow();
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('errorLine');
+    el.innerHTML = `<svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" stroke="var(--red)" stroke-width="1" fill="none"/><path d="M6 3.5v3M6 8v.5" stroke="var(--red)" stroke-width="1" stroke-linecap="round"/></svg> ${msg}`;
+  }
+
+  function plotBode() {
+    clearErr();
+    const rows = document.querySelectorAll('[id^="row-"]');
+    const pts = [];
+
+    rows.forEach(row => {
+      const id = row.id.split('-')[1];
+      const fEl = document.getElementById('f'+id);
+      const viEl = document.getElementById('vi'+id);
+      const voEl = document.getElementById('vo'+id);
+      if (!fEl || !viEl || !voEl) return;
+      const f = parseFloat(fEl.value), vi = parseFloat(viEl.value), vo = parseFloat(voEl.value);
+      if (!isNaN(f) && !isNaN(vi) && !isNaN(vo) && f > 0 && vi !== 0) {
+        const gain = vo / vi;
+        const db = 20 * Math.log10(Math.abs(gain));
+        pts.push({ f, vi, vo, gain, db });
+      }
+    });
+
+    if (pts.length === 0) { showError('No valid data. Enter at least one row with Freq > 0 and Vin ≠ 0.'); return; }
+
+    pts.sort((a,b) => a.f - b.f);
+
+    // Stats
+    const dbs = pts.map(p=>p.db);
+    const maxDB = Math.max(...dbs), minDB = Math.min(...dbs);
+    const cutoff3dB = maxDB - 3;
+
+    // Find closest to -3dB cutoff
+    let cutoffHz = null;
+    let minDiff = Infinity;
+    pts.forEach(p=>{ const d=Math.abs(p.db - cutoff3dB); if(d<minDiff){minDiff=d;cutoffHz=p.f;} });
+
+    const bw = pts[pts.length-1].f - pts[0].f;
+
+    document.getElementById('statMax').innerHTML = maxDB.toFixed(2)+'<span class="stat-unit"> dB</span>';
+    document.getElementById('statMin').innerHTML = minDB.toFixed(2)+'<span class="stat-unit"> dB</span>';
+    document.getElementById('statCutoff').innerHTML = (cutoffHz ? fmtFreq(cutoffHz) : '—').replace(' Hz','').replace(' kHz','<span class="stat-unit"> kHz</span>').replace(' MHz','<span class="stat-unit"> MHz</span>') + (cutoffHz && !['kHz','MHz'].some(u=>fmtFreq(cutoffHz).includes(u)) ? '<span class="stat-unit"> Hz</span>' : '');
+    document.getElementById('statBW').innerHTML = fmtFreq(bw).replace(' Hz','<span class="stat-unit"> Hz</span>').replace(' kHz','<span class="stat-unit"> kHz</span>').replace(' MHz','<span class="stat-unit"> MHz</span>');
+    document.getElementById('statRange').innerHTML = fmtFreq(pts[0].f)+' – '+fmtFreq(pts[pts.length-1].f);
+    document.getElementById('statPoints').innerHTML = pts.length;
+    document.getElementById('chartMeta').textContent = pts.length + ' point' + (pts.length>1?'s':'') + ' · sorted by frequency';
+
+    // Build labels
+    const labels = pts.map(p => fmtFreq(p.f));
+    const dbData = pts.map(p => parseFloat(p.db.toFixed(4)));
+
+    const pad = (maxDB - minDB) * 0.15 + 2;
+    const yMin = Math.floor(minDB - pad);
+    const yMax = Math.ceil(maxDB + pad * 0.5);
+
+    document.getElementById('chartPlaceholder').style.display='none';
+    document.getElementById('canvasWrap').style.display='block';
+
+    if (chartInst) { chartInst.destroy(); }
+
+    const ctx = document.getElementById('bodeChart').getContext('2d');
+
+    // Cutoff annotation line
+    const cutoffPlugin = {
+      id: 'cutoffLine',
+      afterDraw(chart) {
+        if (!cutoffHz) return;
+        const idx = pts.findIndex(p=>p.f===cutoffHz);
+        if (idx < 0) return;
+        const {ctx, chartArea, scales} = chart;
+        const x = scales.x.getPixelForValue(idx);
+        ctx.save();
+        ctx.setLineDash([4,4]);
+        ctx.strokeStyle = 'rgba(255,179,71,0.4)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, chartArea.top);
+        ctx.lineTo(x, chartArea.bottom);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(255,179,71,0.8)';
+        ctx.font = '500 10px DM Mono, monospace';
+        ctx.fillText('−3dB', x+4, chartArea.top+14);
+        ctx.restore();
+      }
+    };
+
+    const gridColor = 'rgba(255,255,255,0.04)';
+    const axisColor = '#4a5d70';
+
+    // Gradient fill
+    const grad = ctx.createLinearGradient(0, 0, 0, 340);
+    grad.addColorStop(0, 'rgba(0,212,255,0.15)');
+    grad.addColorStop(1, 'rgba(0,212,255,0)');
+
+    chartInst = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Gain (dB)',
+          data: dbData,
+          borderColor: '#00d4ff',
+          backgroundColor: grad,
+          pointBackgroundColor: '#00d4ff',
+          pointBorderColor: '#080c10',
+          pointBorderWidth: 2,
+          pointRadius: pts.length > 20 ? 3 : 5,
+          pointHoverRadius: 7,
+          borderWidth: 2,
+          fill: true,
+          tension: 0.4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 500, easing: 'easeOutQuart' },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#0d1117',
+            borderColor: 'rgba(0,212,255,0.3)',
+            borderWidth: 1,
+            titleColor: '#7a8fa6',
+            bodyColor: '#e8f0f8',
+            titleFont: { family: 'DM Mono, monospace', size: 11 },
+            bodyFont: { family: 'DM Mono, monospace', size: 12 },
+            padding: 12,
+            callbacks: {
+              title: items => '  f = ' + fmtFreq(pts[items[0].dataIndex].f),
+              label: item => {
+                const p = pts[item.dataIndex];
+                return [
+                  '  Gain  : ' + p.db.toFixed(3) + ' dB',
+                  '  Linear: ' + p.gain.toFixed(4),
+                  '  Vout  : ' + p.vo.toFixed(4) + ' V',
+                  '  Vin   : ' + p.vi.toFixed(4) + ' V',
+                ];
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            title: {
+              display: true,
+              text: 'Frequency',
+              color: axisColor,
+              font: { family: 'DM Mono, monospace', size: 11 },
+              padding: { top: 8 }
+            },
+            grid: { color: gridColor },
+            ticks: {
+              color: axisColor,
+              font: { family: 'DM Mono, monospace', size: 10 },
+              maxRotation: 40,
+              autoSkip: true,
+              maxTicksLimit: 10
+            },
+            border: { color: 'rgba(255,255,255,0.06)' }
+          },
+          y: {
+            title: {
+              display: true,
+              text: 'Gain (dB)',
+              color: axisColor,
+              font: { family: 'DM Mono, monospace', size: 11 },
+              padding: { bottom: 8 }
+            },
+            grid: { color: gridColor },
+            ticks: {
+              color: axisColor,
+              font: { family: 'DM Mono, monospace', size: 10 },
+              callback: v => v.toFixed(1)+' dB'
+            },
+            min: yMin,
+            max: yMax,
+            border: { color: 'rgba(255,255,255,0.06)' }
+          }
+        }
+      },
+      plugins: [cutoffPlugin]
+    });
+
+    // Table
+    const tbody = document.getElementById('tableBody');
+    tbody.innerHTML = '';
+    pts.forEach((p, i) => {
+      const isNearCutoff = Math.abs(p.db - cutoff3dB) < 1;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="td-num">${(i+1).toString().padStart(2,'0')}</td>
+        <td style="color:var(--text)">${fmtFreq(p.f)}</td>
+        <td>${p.vi.toFixed(4)}</td>
+        <td>${p.vo.toFixed(4)}</td>
+        <td>${p.gain.toFixed(5)}</td>
+        <td class="td-db ${p.db < 0 ? 'neg' : ''}">${p.db.toFixed(3)}</td>
+        <td>${isNearCutoff ? '<span style="font-family:DM Mono,monospace;font-size:10px;padding:3px 7px;border-radius:4px;border:1px solid var(--amber);color:var(--amber);background:var(--amber-dim)">~−3dB</span>' : p.db >= maxDB - 0.5 ? '<span style="font-family:DM Mono,monospace;font-size:10px;padding:3px 7px;border-radius:4px;border:1px solid var(--green);color:var(--green);background:var(--green-dim)">passband</span>' : '<span style="font-family:DM Mono,monospace;font-size:10px;padding:3px 7px;border-radius:4px;border:1px solid var(--border);color:var(--text3)">—</span>'}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    document.getElementById('tableSection').style.display = 'block';
+    document.getElementById('tableSection').classList.add('fade-in');
+  }
+
+  // Filter badge toggles
+  document.querySelectorAll('.filter-badge').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.filter-badge').forEach(x=>x.classList.remove('active'));
+      b.classList.toggle('active');
+    });
+  });
+
+  // Init
+  addRow(); addRow(); addRow();
+</script>
+</body>
+</html>
